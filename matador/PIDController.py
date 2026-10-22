@@ -12,6 +12,7 @@ class PIDController:
         self.integral = 0.0
         self.prev_error = 0.0
         self.prev_time = None
+        self.val = 0.0
 
     def update(self, current_value, current_time=None):
         # Determine time step (dt)
@@ -59,7 +60,7 @@ class PIDController:
         self.prev_error = error
         self.prev_time = current_time
 
-        return output
+        self.val = output
 
     def change_setpoint(self, new_setpoint):
         """Change the target setpoint dynamically."""

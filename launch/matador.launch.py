@@ -17,7 +17,8 @@ def generate_launch_description():
             output='screen',
             parameters=[
                 params_file_path,
-                {'image_transport': 'compressed'}],
+                {'image_transport': 'compressed',
+                'use_approximate_sync': True}],
             remappings=[
                 ('image_rect', '/image_raw'),
                 ('camera_info', '/camera_info'),
