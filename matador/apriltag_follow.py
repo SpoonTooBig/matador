@@ -1,3 +1,4 @@
+import re
 import rclpy
 import numpy as np
 import math
@@ -12,6 +13,8 @@ from tf2_msgs.msg import TFMessage
 from tf2_ros import Buffer, TransformListener
 from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
 from rclpy.duration import Duration
+from sensor_msgs.msg import LaserScan
+from rclpy.time import Time
 
 class State(Enum):
     START = 1
@@ -31,8 +34,14 @@ class ApriltagFollow(Node):
             reliability=ReliabilityPolicy.RELIABLE,
             history=HistoryPolicy.KEEP_LAST
             )
+        qos_profile_lidar = QoSProfile(
+            depth=10,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            history=HistoryPolicy.KEEP_LAST
+        )
         self.deadzone_theta = 5 # center deadzone either way in degrees
         
+        self.emergency = False
         self.t0 = self.get_clock().now() # for hold timeout
         self.state = State.START
         self.rotation_controller = PID(2, .05, 0.0, 0, [-2.5, 2.5])
@@ -49,6 +58,13 @@ class ApriltagFollow(Node):
             '/detections',
             self.apriltag_callback,
             qos_profile
+        )
+        
+        self.lidar_subsciber = self.create_subscription(
+            LaserScan,
+            '/scan',
+            self.lidar_callback,
+            qos_profile_lidar
         )
 
     def apriltag_callback(self, msg):
@@ -70,7 +86,7 @@ class ApriltagFollow(Node):
 
         if tag_found:
             try:
-                transform = self.tf_buffer.lookup_transform('camera', "tag_0_frame", now)
+                transform = self.tf_buffer.lookup_transform('camera', "tag_0_frame", Time())
                 x = transform.transform.translation.x
                 z = transform.transform.translation.z
 
@@ -83,7 +99,11 @@ class ApriltagFollow(Node):
             except (LookupException, ConnectivityException, ExtrapolationException) as e:
                 self.get_logger().warn(f"Waiting for TF tree frames to initialize: {e}")
         
-        if not tag_found:
+        if self.state == State.SAFTEY_STOP:
+            self.cmd_vel_publisher.publish(self.generate_twist(0.0, 0.0))
+            input("Safety stop triggered. Press enter to continue.")
+            self.state = State.SEARCH
+        elif not tag_found:
             if (now - self.t0).nanoseconds / 1e9 < 1.0:
                 self.state = State.HOLD
             else:
@@ -94,7 +114,7 @@ class ApriltagFollow(Node):
             self.state = State.APPROACH
         elif facing_center and distance_good:
             self.state = State.HOLD
-                
+                        
         if self.state == State.SEARCH:
             output = self.search_procedure()
         elif self.state == State.ALIGN:
@@ -103,9 +123,14 @@ class ApriltagFollow(Node):
             output = self.approach_procedure()
         elif self.state == State.HOLD:
             output = self.hold_procedure()
-        elif self.state == State.SAFTEY_STOP:
-            None
+        
         self.cmd_vel_publisher.publish(output)
+
+    def lidar_callback(self, msg):
+        front_dist = msg.ranges[int(len(msg.ranges)/2)]
+        if front_dist < 0.2:
+            self.state = State.SAFTEY_STOP
+        return
     
     def search_procedure(self):
         return self.generate_twist(0.0,0.8)
