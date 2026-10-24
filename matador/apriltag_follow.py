@@ -44,7 +44,7 @@ class ApriltagFollow(Node):
         self.emergency = False
         self.t0 = self.get_clock().now() # for hold timeout
         self.state = State.START
-        self.rotation_controller = PID(2, .05, 0.0, 0, [-2.5, 2.5])
+        self.rotation_controller = PID(1.5, 0.0, 0.0, 0, [-2.5, 2.5])
         self.position_controller = PID(.5, 0.01, 0.0, 0.5, [-0.22, 0.22])
         # Publisher creation: create_publisher(MsgType, 'topic_name', queue_size)
         self.cmd_vel_publisher = self.create_publisher(Twist, '/cmd_vel', qos_profile)
@@ -94,7 +94,8 @@ class ApriltagFollow(Node):
                 self.position_controller.update(z)
                 
                 facing_center = abs(self.rotation_controller.prev_error) < self.deadzone_theta*(math.pi/180)
-                distance_good = 0.45 < self.position_controller.prev_error < 0.55  
+                e_pos = self.position_controller.prev_error
+                distance_good = (0.45 < e_pos) and (e_pos< 0.55)
                 self.t0 = now              
             except (LookupException, ConnectivityException, ExtrapolationException) as e:
                 self.get_logger().warn(f"Waiting for TF tree frames to initialize: {e}")
